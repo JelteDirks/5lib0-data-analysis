@@ -1,4 +1,5 @@
 clear;
+close all hidden;
 
 KiB = 2^10; % 1024 Bytes
 frequency = 10^6 * 40; % 40 MHz
@@ -52,6 +53,8 @@ sum_color_times(:, 2) = colorall.F;
 sum_color_times(:, 3) = colorall.NBYTES_tile1joined;
 sum_color_times(:, 4) = colorall.TDIFF;
 
+sum_all_times = [sum_grey_times ; sum_color_times];
+
 figure();
 subplot(1,3,1);
 qqplot(response_times_msec, image_sizes_kibs);
@@ -102,3 +105,13 @@ throughput_grey = (sum_grey_times(:, 3) ./ KiB) ./ (sum_grey_times(:, 4) ./ freq
 throughput_color = (sum_color_times(:, 3) ./ KiB) ./ (sum_color_times(:, 4) ./ frequency);
 disp("Grey image throughput (KiB/sec) max:" + max(throughput_grey) + " min:" + min(throughput_grey) + " mean:" + mean(throughput_grey));
 disp("Color image throughput (KiB/sec) max:" + max(throughput_color) + " min:" + min(throughput_color) + " mean:" + mean(throughput_color));
+disp("Grey image throughput (KiB/sec) all: " + (sum(sum_grey_times(:, 3)) / KiB) / (sum(sum_grey_times(:, 4)) / frequency));
+disp("Color image throughput (KiB/sec) all: " + (sum(sum_color_times(:, 3)) / KiB) / (sum(sum_color_times(:, 4)) / frequency));
+disp("All images throughput (KiB/sec) all: " + (sum(sum_all_times(:, 3)) / KiB) / (sum(sum_all_times(:, 4)) / frequency));
+
+figure();
+qqplot(sum_all_times(:, 1) ./ frequency .* ms_per_s, sum_all_times(:, 3) ./ KiB);
+ylim([0, max_y]);
+xlabel("ET in ms");
+ylabel("Size in KiB");
+title("Execution time vs KiB");
