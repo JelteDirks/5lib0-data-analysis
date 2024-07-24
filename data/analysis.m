@@ -25,18 +25,24 @@ xticklabels([0 1 2]);
 
 executiontimes = joinedall.DBTM + joinedall.DBTM_copytotile + joinedall.DBTM_copytoarm;
 sum_executiontimes = accumarray(joinedall.F, executiontimes);
-sum_nbytes = accumarray(joinedall.F, joinedall.NBYTES);
 
 [~, indices] = unique(joinedall.F);
 unique_joinedall = joinedall(indices, :);
 unique_sorted_joinedall = sortrows(unique_joinedall, "F");
 image_bytes = unique_sorted_joinedall.IMGBYTES;
-
-% add total bytes of file and rerun and recalculate
+image_bytes_kib = image_bytes ./ KiB;
 
 figure();
-qqplot(sum_executiontimes ./ frequency .* ms_per_sec, image_bytes ./ KiB);
+qqplot(sum_executiontimes ./ frequency .* ms_per_sec, image_bytes_kib);
+ylim([0, max(image_bytes_kib) + 100]);
 xlabel("ET in ms");
 ylabel("Size in KiB");
 
 close all;
+
+et_per_byte = sum_executiontimes ./ image_bytes;
+figure();
+qqplot(et_per_byte, image_bytes_kib);
+ylim([0 600]);
+xlabel("ET in cycles per byte");
+ylabel("Image size in KiB");
