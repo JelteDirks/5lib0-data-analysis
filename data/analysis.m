@@ -38,11 +38,19 @@ ylim([0, max(image_bytes_kib) + 100]);
 xlabel("ET in ms");
 ylabel("Size in KiB");
 
-close all;
-
 et_per_byte = sum_executiontimes ./ image_bytes;
 figure();
 qqplot(et_per_byte, image_bytes_kib);
 ylim([0 600]);
 xlabel("ET in cycles per byte");
 ylabel("Image size in KiB");
+
+throughput = sum(image_bytes_kib) / (sum(executiontimes) / frequency);
+processed_bytes = joinedall.NBYTES_copytotile;
+throughput_processed = (sum(processed_bytes) / KiB) / (sum(executiontimes) / frequency);
+disp("Throughput in terms of input image size: " + throughput + " KiB/s");
+disp("Throughput in terms of total bytes processed: " + throughput_processed + " KiB/s");
+
+precentage_wasted = 1 - (throughput / throughput_processed);
+
+close all;
