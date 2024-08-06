@@ -5,6 +5,9 @@ KiB = 2^10; % 1024 Bytes
 frequency = 10^6 * 40; % 40 MHz
 ms_per_s = 10^3; % 1.000 ms/s
 us_per_s = 10^6; % 1.000.000 us/s
+cycles_per_schedule = 1000000; % cycles per schedule
+cycles_per_part0 = 5000;
+cycles_per_cswitch = 2000;
 
 tile0tokencopy = readtable("a.csv");
 tile0convolution = readtable("b.csv");
@@ -54,64 +57,61 @@ sum_color_times(:, 3) = colorall.NBYTES_tile1joined;
 sum_color_times(:, 4) = colorall.TDIFF;
 
 sum_all_times = [sum_grey_times ; sum_color_times];
+table_headers = {'ET', 'ID', 'IMGSIZE', 'LATENCY'};
+sorted_all_times = array2table(sortrows(sum_all_times, 2), "VariableNames", table_headers);
+
+sorted_all_times.ID = sorted_all_times.ID + 1;
+
+save("hybrid_times", "sorted_all_times");
+
+latency_executiontime_diff = sorted_all_times.LATENCY - sorted_all_times.ET;
 
 figure();
-subplot(1,3,1);
-qqplot(response_times_msec, image_sizes_kibs);
-ylim([0, max(image_sizes_kibs) + 5]);
-xlabel("Reponse time in milliseconds");
-ylabel("Image size in KiB");
-title("Latency All Images");
+subplot(1, 3, 1);
+scatter(sorted_all_times.IMGSIZE ./ KiB, sorted_all_times.LATENCY ./ frequency .* ms_per_s);
+ylabel("Reponse time (ms)");
+xlabel("Image size (KiB)");
+title("Latency");
+ylim([0 6000]);
 
-max_y = max(max(sum_grey_times(:, 3) ./ KiB));
-max_y = max(max_y, max(sum_color_times(:, 3) ./ KiB)) + 5;
+subplot(1, 3, 2);
+scatter(sorted_all_times.IMGSIZE ./ KiB, sorted_all_times.ET ./ frequency .* ms_per_s);
+ylabel("Execution time (ms)");
+xlabel("Image size (KiB)");
+title("Execution Time");
+ylim([0 6000]);
 
-subplot(1,3,2);
-qqplot(sum_grey_times(:, 1) ./ frequency .* ms_per_s, sum_grey_times(:, 3) ./ KiB);
-ylim([0, max_y])
-xlabel("Execution time in milliseconds");
-ylabel("Image size in KiB");
-title("ET Greyscale Images");
+subplot(1, 3, 3);
+scatter(sorted_all_times.IMGSIZE ./ KiB, latency_executiontime_diff ./ frequency .* ms_per_s);
+xlabel("Image size (KiB)");
+ylabel("Latency - Execution time (ms)");
+ylim([0 400])
+title("Difference");
 
-subplot(1,3,3);
-qqplot(sum_color_times(:, 1) ./ frequency .* ms_per_s, sum_color_times(:, 3) ./ KiB);
-ylim([0, max_y])
-xlabel("Execution time in milliseconds");
-ylabel("Image size in KiB");
-title("ET Color Images");
+total_bytes_processed = sum(sorted_all_times.IMGSIZE);
+total_time_processing = sum(sorted_all_times.LATENCY);
+throughput_kib_per_s = total_bytes_processed / KiB / (total_time_processing / frequency);
 
-disp("Maximum latency gs: " + max(sum_grey_times(:, 4)) / frequency * ms_per_s + " milliseconds");
-disp("Maximum latency c: " + max(sum_color_times(:, 4)) / frequency * ms_per_s + " milliseconds");
-disp("Maximum ET gs: " + max(sum_grey_times(:, 1)) / frequency * ms_per_s + " milliseconds");
-disp("Maximum ET c: " + max(sum_color_times(:, 1)) / frequency * ms_per_s + " milliseconds");
+disp("Throughput: " + throughput_kib_per_s + " KiB/s");
+disp("Average latency: " + mean(sorted_all_times.LATENCY) / frequency + " s");
+disp("Average latency per byte: " + mean(sorted_all_times.LATENCY ./ sorted_all_times.IMGSIZE) / frequency * ms_per_s + " ms");
 
-latency_et_diff_color = sum_color_times(:, 4) - sum_color_times(:, 1);
-latency_et_diff_grey = sum_grey_times(:, 4) - sum_grey_times(:, 1);
+capped_latency = sorted_all_times.LATENCY;
+capped_latency(capped_latency <= cycles_per_schedule) = 0;
+context_switches = capped_latency ./ cycles_per_schedule;
+context_switch_cycles = floor(context_switches) .* (cycles_per_part0 + cycles_per_cswitch);
+context_switch_time = context_switch_cycles ./ frequency .* ms_per_s;
+mean_cswitch_time = mean(context_switch_time);
 
-figure();
-subplot(1,2,1);
-scatter(latency_et_diff_grey ./ frequency .* ms_per_s, sum_grey_times(:, 4) ./ frequency .* ms_per_s);
-xlabel("Difference with ET in milliseconds");
-ylabel("Measured latency in milliseconds");
-title("Greyscale Images");
-
-subplot(1,2,2);
-scatter(latency_et_diff_color ./ frequency .* ms_per_s, sum_color_times(:, 4) ./ frequency .* ms_per_s);
-xlabel("Difference with ET in milliseconds");
-ylabel("Measured latency in milliseconds");
-title("Color Images");
-
-throughput_grey = (sum_grey_times(:, 3) ./ KiB) ./ (sum_grey_times(:, 4) ./ frequency);
-throughput_color = (sum_color_times(:, 3) ./ KiB) ./ (sum_color_times(:, 4) ./ frequency);
-disp("Grey image throughput (KiB/sec) max:" + max(throughput_grey) + " min:" + min(throughput_grey) + " mean:" + mean(throughput_grey));
-disp("Color image throughput (KiB/sec) max:" + max(throughput_color) + " min:" + min(throughput_color) + " mean:" + mean(throughput_color));
-disp("Grey image throughput (KiB/sec) all: " + (sum(sum_grey_times(:, 3)) / KiB) / (sum(sum_grey_times(:, 4)) / frequency));
-disp("Color image throughput (KiB/sec) all: " + (sum(sum_color_times(:, 3)) / KiB) / (sum(sum_color_times(:, 4)) / frequency));
-disp("All images throughput (KiB/sec) all: " + (sum(sum_all_times(:, 3)) / KiB) / (sum(sum_all_times(:, 4)) / frequency));
+disp("Average context switch time: " + mean_cswitch_time + " ms");
 
 figure();
-qqplot(sum_all_times(:, 1) ./ frequency .* ms_per_s, sum_all_times(:, 3) ./ KiB);
-ylim([0, max_y]);
-xlabel("ET in ms");
-ylabel("Size in KiB");
-title("Execution time vs KiB");
+qqplot(context_switch_time, image_sizes_kibs);
+
+figure();
+boxplot(sorted_all_times.LATENCY ./ frequency .* ms_per_s);
+ylabel("Latency (ms)");
+title("Latency of all images");
+xticklabels("Hybrid");
+
+close all;
